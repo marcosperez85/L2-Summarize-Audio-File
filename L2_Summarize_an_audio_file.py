@@ -116,10 +116,11 @@ transcribe_client = session.client('transcribe', region_name='us-east-1')
 # usamos la función "uuid" (Universal Unique ID) que sirve para generar strings únicos de letras y números.
 # Tiene cinco métodos de generación pero en el tutorial indicaron de usar sólo el 4.
 job_name = 'transcription-job-' + str(uuid.uuid4())
-print(job_name)
 
-
-"""
+# El Transcribe necesita que se le pase el job name al igual que nombre del archivo el cual tiene que procesar.
+# También hay que pasarle el formato del archvo y para una mejor performance en la transcripción, conviene ayudarla indicando
+# cuál es el idioma del audio, cuánta es la cantidad máxima de personas hablando y que la transcripción segregue el texto de
+# una persona respecto de la otra.
 response = transcribe_client.start_transcription_job(
     TranscriptionJobName=job_name,
     Media={'MediaFileUri': f's3://{bucket_name}/{file_name}'},
@@ -131,6 +132,8 @@ response = transcribe_client.start_transcription_job(
         'MaxSpeakerLabels': 2
     }
 )
+
+"""
 
 while True:
     status = transcribe_client.get_transcription_job(TranscriptionJobName=job_name)
