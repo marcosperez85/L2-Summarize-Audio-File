@@ -103,16 +103,23 @@ def subirArchivo(nombreDeArchivo, nombreDelBucket):
         return False
     return True
 
-
 buscarSiExisteObjeto(file_name, bucket_name)
 
 
-"""
+# ===============================================
+# Sección para transcribir un archivo de audio alojado en nuestro bucket S3
 
-transcribe_client = boto3.client('transcribe', region_name='us-east-1')
+# Crear cliente del servicio "Transcribe" en la región ingresada sino toma us-east-1 por default
+transcribe_client = session.client('transcribe', region_name='us-east-1')
+
+# Dado que el servicio de transcripción necesita que se le pase como parámetro un  nombre de job que sea único,
+# usamos la función "uuid" (Universal Unique ID) que sirve para generar strings únicos de letras y números.
+# Tiene cinco métodos de generación pero en el tutorial indicaron de usar sólo el 4.
 job_name = 'transcription-job-' + str(uuid.uuid4())
-job_name
+print(job_name)
 
+
+"""
 response = transcribe_client.start_transcription_job(
     TranscriptionJobName=job_name,
     Media={'MediaFileUri': f's3://{bucket_name}/{file_name}'},
