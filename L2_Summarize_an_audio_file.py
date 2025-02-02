@@ -38,6 +38,8 @@ s3_client = session.client('s3', region_name = "us-east-1")
 recurso_s3 = session.resource('s3')
 
 # Guardo en una variable el nombre del bucket
+bucket_name = 'bucket-para-archivos-mp3-20250202'
+
 # En el tutorial tienen guardado el nombre del bucket en una variable de entorno de Jupyter. En este caso no voy a hacer eso
 # por lo que no es necesario importar la librería "os" ni tampoco traerme el nombre del bucket desde una variable de entorno.
 # Entonces, dado que lo dejo "hardcodeado" agrego un condicional en caso de que un día borre dicho bucket en AWS.
@@ -65,13 +67,49 @@ def crearBucket(nombreDeBucket):
     logging.info(f"\n\nEl bucket '{nombreDeBucket}' fue creado con éxito en la región us-east-1'")
     return True
 
-bucket_name = 'bucket-l2-summarize-audio-file'
+# Llamo a la función de verificación de existencia del bucket
 buscarSiExisteBucket(bucket_name)
 
-"""
+# ===============================================
+# Sección para subir archivos de audio
+
 file_name = 'dialog.mp3'
-s3_client.upload_file(file_name, bucket_name, file_name)
-transcribe_client = boto3.client('transcribe', region_name='us-east-2')
+
+# Recordar que un archivo dentro de un bucket recibe el nombre de "objeto". Para simplificar el código vamos a hacer
+# que el nombre del objeto (último parámetro) sea el mismo que el nombre de la función.
+
+def buscarSiExisteObjeto(file_name, bucket_name):
+
+    # Obtener el objeto Bucket de nuestro bucket específico.
+    objetoBucket = recurso_s3.Bucket(bucket_name)
+
+    # Crear una lista usando el list comprehension
+    listaDeObjetos = [obj.key for obj in objetoBucket.objects.all()]    
+    
+    if file_name not in listaDeObjetos:
+        return subirArchivo(file_name, bucket_name)
+    else:
+        print("\nEl archivo ya existía en el bucket")
+        return False
+    
+
+def subirArchivo(nombreDeArchivo, nombreDelBucket):
+    try:
+        s3_client.upload_file(nombreDeArchivo, nombreDelBucket, nombreDeArchivo)
+        logging.info(f"\nEl archivo '{nombreDeArchivo} fue subido con éxito al bucket '{nombreDelBucket}")
+
+    except ClientError as err:
+        logging.info(f"\nNo se pudo subir el archivo debido al error:\n\n{err}")        
+        return False
+    return True
+
+
+buscarSiExisteObjeto(file_name, bucket_name)
+
+
+"""
+
+transcribe_client = boto3.client('transcribe', region_name='us-east-1')
 job_name = 'transcription-job-' + str(uuid.uuid4())
 job_name
 
