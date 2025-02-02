@@ -5,17 +5,26 @@
 
 # ### Import all needed packages
 import os
-from IPython.display import Audio
+import pygame
 import boto3
 import uuid
 import time
 import json
-from jinja2 import Template
+#from jinja2 import Template
 
 
 # ### Let's start with transcribing an audio file
-audio = Audio(filename="dialog.mp3")
-display(audio)
+
+# El siguiente código es para poder reproducir un audio en Python dado que la librería IPython es propia del entorno de Jupyter
+# Por ese motivo es que se tiene que importar la librería pygame si sólo se trabaja desde VS Code.
+pygame.mixer.init()
+pygame.mixer.music.load("dialog.mp3")
+pygame.mixer.music.play()
+
+# input("\nPresiona Enter para detener la reproducción...")
+# pygame.mixer.music.stop()
+
+"""
 s3_client = boto3.client('s3', region_name='us-west-2')
 bucket_name = os.environ['BucketName']
 
@@ -119,3 +128,4 @@ response = bedrock_runtime.invoke_model(**kwargs)
 response_body = json.loads(response.get('body').read())
 generation = response_body['results'][0]['outputText']
 print(generation)
+"""
