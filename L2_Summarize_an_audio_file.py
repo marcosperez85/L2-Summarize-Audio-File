@@ -4,14 +4,17 @@
 # # Lesson 2: Summarize an audio file
 
 # ### Import all needed packages
-import os
 import pygame
 import boto3
 import uuid
 import time
 import json
+import logging
+from botocore.exceptions import ClientError
 from jinja2 import Template
 
+# Configurar logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # ### Let's start with transcribing an audio file
 
@@ -19,18 +22,56 @@ from jinja2 import Template
 # Por ese motivo es que se tiene que importar la librería pygame si sólo se trabaja desde VS Code.
 pygame.mixer.init()
 pygame.mixer.music.load("dialog.mp3")
-pygame.mixer.music.play()
+# pygame.mixer.music.play()
 
 # input("\nPresiona Enter para detener la reproducción...")
 # pygame.mixer.music.stop()
 
-"""
-s3_client = boto3.client('s3', region_name='us-west-2')
-bucket_name = os.environ['BucketName']
+# Especifico mi sesión de para el usuario del IAM Identity Center (SSO)
+session = boto3.Session(profile_name="AdministratorAccess-376129873205")
 
+# Crear cliente de S3 en la región ingresada sino toma us-east-1 por default
+s3_client = session.client('s3', region_name = "us-east-1")
+
+# Creo un objeto s3 para para poder trabajar sobre el mismo. No era parte del tutorial pero lo agergué yo para algunas
+# validaciones dentro de VS Code
+recurso_s3 = session.resource('s3')
+
+# Guardo en una variable el nombre del bucket
+# En el tutorial tienen guardado el nombre del bucket en una variable de entorno de Jupyter. En este caso no voy a hacer eso
+# por lo que no es necesario importar la librería "os" ni tampoco traerme el nombre del bucket desde una variable de entorno.
+# Entonces, dado que lo dejo "hardcodeado" agrego un condicional en caso de que un día borre dicho bucket en AWS.
+
+def buscarSiExisteBucket(bucket_name):
+    # Obtener la lista de nombre de buckets
+    # s3.buckets.all() devuelve un iterador con todos los objetos de tipo Bucket en la cuenta de AWS.
+    # Luego se recorre cada objeto "bucket" en s3.buckets.all(), obteniendo su nombre con bucket.name
+    # Esto es un "list comprehension" que es una forma abreviada de crear una lista 
+    buckets = [bucket.name for bucket in recurso_s3.buckets.all()]
+    
+    # La instrucción anterior devuelve una lista de objetos, no strings. Además no se puede evaluar son strings,
+    # sólo se puede evaluar con índices. Así que tengo que usar la sintaxis "elem in list" o "elem not in list"
+    if bucket_name not in buckets:
+        logging.info(f"\n\nEl bucket '{bucket_name}' no pudo encontrarse y va a ser creado en us-east-1")
+        return crearBucket(bucket_name)
+
+    else:
+        logging.info(f"\n\nEl bucket '{bucket_name}' fue encontrado en us-east-1 y no hace falta crearlo")
+        return True
+
+def crearBucket(nombreDeBucket):
+    #Crear bucket en region us-east-1
+    s3_client.create_bucket(Bucket = nombreDeBucket)
+    logging.info(f"\n\nEl bucket '{nombreDeBucket}' fue creado con éxito en la región us-east-1'")
+    return True
+
+bucket_name = 'bucket-l2-summarize-audio-file'
+buscarSiExisteBucket(bucket_name)
+
+"""
 file_name = 'dialog.mp3'
 s3_client.upload_file(file_name, bucket_name, file_name)
-transcribe_client = boto3.client('transcribe', region_name='us-west-2')
+transcribe_client = boto3.client('transcribe', region_name='us-east-2')
 job_name = 'transcription-job-' + str(uuid.uuid4())
 job_name
 
