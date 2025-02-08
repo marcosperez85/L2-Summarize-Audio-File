@@ -121,6 +121,7 @@ job_name = 'transcription-job-' + str(uuid.uuid4())
 # También hay que pasarle el formato del archvo y para una mejor performance en la transcripción, conviene ayudarla indicando
 # cuál es el idioma del audio, cuánta es la cantidad máxima de personas hablando y que la transcripción segregue el texto de
 # una persona respecto de la otra.
+# Finalmente el resultado de la transcripción lo almacena en un bucket S3 (que en este caso es el mismo que el del MP3)
 response = transcribe_client.start_transcription_job(
     TranscriptionJobName=job_name,
     Media={'MediaFileUri': f's3://{bucket_name}/{file_name}'},
@@ -133,15 +134,23 @@ response = transcribe_client.start_transcription_job(
     }
 )
 
-"""
 
+# ===============================================
+# Sección para verificar el progreso de la transcripción
+
+# Este bucle se repite cada dos segundos siempre y cuando el status de la transcripción NO SEA COMPLETED o FAILED.
+# Se ser alguno de esos casos, sale del bucle y continúa con el resto del código.
 while True:
     status = transcribe_client.get_transcription_job(TranscriptionJobName=job_name)
     if status['TranscriptionJob']['TranscriptionJobStatus'] in ['COMPLETED', 'FAILED']:
         break
     time.sleep(2)
+    print(f"Generando transcripción, por favor espere.")
+    
 
-print(status['TranscriptionJob']['TranscriptionJobStatus'])
+# Mostrar status final de la transcripción. Dado que el bucle anterior sólo se terminaba con COMPLETED o FAILED, 
+# el status al mostrar en pantalla va a ser alguno de esos dos.
+print(f"\nEl estado de la transcripción es: {status['TranscriptionJob']['TranscriptionJobStatus']}")
 
 if status['TranscriptionJob']['TranscriptionJobStatus'] == 'COMPLETED':
     
@@ -150,10 +159,25 @@ if status['TranscriptionJob']['TranscriptionJobStatus'] == 'COMPLETED':
     transcript_obj = s3_client.get_object(Bucket=bucket_name, Key=transcript_key)
     transcript_text = transcript_obj['Body'].read().decode('utf-8')
     transcript_json = json.loads(transcript_text)
+
+    # Explicación de lo anterior:
+    # 1) Guardo el nombre del archivo de la transcripción en una variable. El nombre del archivo va a ser el nombre del job.
+    # 2) Accedo al archivo dentro del bucket. Para eso paso como parámetro el nombre del bucket y del archivo
+    #    (el cual es el transcription key)
+    # 3) Leemos el body del archivo sin guardarlo en disco y le cambiamos el formato a UTF-8.
+    #    Esto nos va a dar un texto en formato JSON pero no deja de ser un texto.
+    # 4) Usamos json.loads para parsar un archivo JSSON en un objet diccionario de Python
+
+    # Este objeto transcript_json va a contener toda la transcripción pero sin diferenciar a cada speaker.
+    # Por este motivo el siguiente código hace una iteración en donde se mejora el formato para lograr que quede con
+    # la estructura: "speaker: contenido"
     
+    # Inicializar variables
     output_text = ""
-    current_speaker = None
-    
+    current_speaker = None   
+
+    # El instructor del curso mostró el contenido de "transcript_json" para saber que tenía que bucar dentro de los keys
+    # "results" y luego dentro de "items"
     items = transcript_json['results']['items']
     
     for item in items:
@@ -167,16 +191,20 @@ if status['TranscriptionJob']['TranscriptionJobStatus'] == 'COMPLETED':
             output_text += f"\n{current_speaker}: "
             
         # Add the speech content:
+        # Esto elimina los espacios (trailing spaces) al final de cada oración. No era muy necesario esto.
         if item['type'] == 'punctuation':
             output_text = output_text.rstrip()
-            
+
+        # Concatenar el nombre del speaker con el contenido propiamente dicho    
         output_text += f"{content} "
         
-    # Save the transcript to a text file
+    # Guardar el resultado de la transcripción y formateo en un archivo de texto localmente (no en S3)
     with open(f'{job_name}.txt', 'w') as f:
         f.write(output_text)
+        print(f"\nSe ha creado con éxito el archivo: '{job_name}.txt' en la carpeta local.")
 
 
+"""
 # ### Now, let's use an LLM
 
 bedrock_runtime = boto3.client('bedrock-runtime', region_name='us-west-2')
