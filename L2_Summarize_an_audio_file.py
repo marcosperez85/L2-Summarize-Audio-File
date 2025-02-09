@@ -10,6 +10,7 @@ import uuid
 import time
 import json
 import logging
+import os
 from botocore.exceptions import ClientError
 from jinja2 import Template
 
@@ -20,9 +21,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 # El siguiente código es para poder reproducir un audio en Python dado que la librería IPython es propia del entorno de Jupyter
 # Por ese motivo es que se tiene que importar la librería pygame si sólo se trabaja desde VS Code.
-pygame.mixer.init()
-pygame.mixer.music.load("dialog.mp3")
-# pygame.mixer.music.play()
+if os.path.exists("dialog.mp3"):
+    pygame.mixer.init()
+    pygame.mixer.music.load("dialog.mp3")
+    #pygame.mixer.music.play()
+else:
+    logging.error("El archivo 'dialog.mp3' no se encontró.")
 
 # input("\nPresiona Enter para detener la reproducción...")
 # pygame.mixer.music.stop()
@@ -89,7 +93,7 @@ def buscarSiExisteObjeto(file_name, bucket_name):
     if file_name not in listaDeObjetos:
         return subirArchivo(file_name, bucket_name)
     else:
-        print("\nEl archivo ya existía en el bucket")
+        logging.info("\nEl archivo ya existía en el bucket")
         return False
     
 
@@ -152,6 +156,10 @@ while True:
 # el status al mostrar en pantalla va a ser alguno de esos dos.
 print(f"\nEl estado de la transcripción es: {status['TranscriptionJob']['TranscriptionJobStatus']}")
 
+
+# ===============================================
+# Sección para formatear la transcripción y mejorar el formato.
+
 if status['TranscriptionJob']['TranscriptionJobStatus'] == 'COMPLETED':
     
     # Load the transcript from S3.
@@ -199,34 +207,55 @@ if status['TranscriptionJob']['TranscriptionJobStatus'] == 'COMPLETED':
         output_text += f"{content} "
         
     # Guardar el resultado de la transcripción y formateo en un archivo de texto localmente (no en S3)
-    with open(f'{job_name}.txt', 'w') as f:
-        f.write(output_text)
-        print(f"\nSe ha creado con éxito el archivo: '{job_name}.txt' en la carpeta local.")
+        with open(f'{job_name}.txt', 'w', encoding='utf-8') as f:
+            f.write(output_text)
+            print(f"\nSe ha creado con éxito el archivo: '{job_name}.txt' en la carpeta local.")
 
 
-"""
-# ### Now, let's use an LLM
+# ===============================================
+# Sección para crear el resumen en base a la transcripción.
 
-bedrock_runtime = boto3.client('bedrock-runtime', region_name='us-west-2')
+bedrock_runtime = session.client('bedrock-runtime', region_name='us-east-1')
 
+
+# Abrir el archivo de texto local con la transcripción que se realizó antes
 with open(f'{job_name}.txt', "r") as file:
     transcript = file.read()
 
-get_ipython().run_cell_magic('writefile', 'prompt_template.txt', 'I need to summarize a conversation. The transcript of the \nconversation is between the <data> XML like tags.\n\n<data>\n{{transcript}}\n</data>\n\nThe summary must contain a one word sentiment analysis, and \na list of issues, problems or causes of friction\nduring the conversation. The output must be provided in \nJSON format shown in the following example. \n\nExample output:\n{\n    "sentiment": <sentiment>,\n    "issues": [\n        {\n            "topic": <topic>,\n            "summary": <issue_summary>,\n        }\n    ]\n}\n\nWrite the JSON output and nothing more.\n\nHere is the JSON output:\n')
+# El instructor explica que en el módulo anterior (L1) habíamos usado un string para generar un prompt
+# También es factible concatenación de strings y F-String para agregar variables.
+# Sin embargo para un entorno de producción como es este caso donde tenemos una arquitectura Serverless, es más conveniente
+# o más manejable, usar un template en un archivo separado. En este caso vamos a usar Jinja que es la librería de templates.
+# Al usar un template en un archivo separado, se puede realizar un control de versiones y separar el código del template del
+# código de la aplicación. Esto permite intercambiar prompts en vivo mientras la aplicación está en producción.
 
+# En el tutorial original se usa una instrucción propia del notebook de Jupyter para crear un archivo con el prompt
+# Sin embargo acá en Python no tenemos esa misma instrucción de IPython por lo que el TXT del prompt ya lo dejé localmente.
+# y se llama "prompt_template.txt"
+
+# Leemos el archivo de texto del prompt y lo guardamos en una variable.
 with open('prompt_template.txt', "r") as file:
     template_string = file.read()
 
+# Si miramos el prompt, sólo nos interesa completar un tag de XML llamado "data" el cual va a contener el "transcript"
+# Luego a ese key de transcript le cargamos la variable "transcript" obtenida anteriormente al leer el prompt_template.txt
 data = {
     'transcript' : transcript
 }
 
+# Llamamos al objeto Template que nos habíamos traido de la librería Jinja y le cargamos el contenido
+# de la variable template_string. Para más comodidad ese objeto se lo asignamos a una variable llamada "template" también.
 template = Template(template_string)
-prompt = template.render(data)
-print(prompt)
 
+# Renderizamos todo y lo almacenamos en una variable llamada "prompt". 
+# Todo esto es para no tener que crear un prompt manualmente donde le hagamos un copy/paste de la transcripción.
+# Una vez más, se pudo haber hecho con concatenación de strings y con el uso de F-String pero de esta forma podemos
+# editar el archivo de prompt en vivo y llevar un control de versiones.
+prompt = template.render(data)
+
+# Todo lo que sigue ahora es igual a lo que habíamos hecho en el módulo L1.
 kwargs = {
-    "modelId": "amazon.titan-text-express-v1",
+    "modelId": "amazon.titan-text-lite-v1",
     "contentType": "application/json",
     "accept": "*/*",
     "body": json.dumps(
@@ -245,4 +274,3 @@ response = bedrock_runtime.invoke_model(**kwargs)
 response_body = json.loads(response.get('body').read())
 generation = response_body['results'][0]['outputText']
 print(generation)
-"""
