@@ -11,6 +11,8 @@ import time
 import json
 import logging
 import os
+import sys
+import time
 from botocore.exceptions import ClientError
 from jinja2 import Template
 
@@ -142,25 +144,41 @@ response = transcribe_client.start_transcription_job(
 # ===============================================
 # Sección para verificar el progreso de la transcripción
 
+timeout = 120  # segundos
+start_time = time.time()
+
 # Este bucle se repite cada dos segundos siempre y cuando el status de la transcripción NO SEA COMPLETED o FAILED.
 # Se ser alguno de esos casos, sale del bucle y continúa con el resto del código.
 while True:
-    status = transcribe_client.get_transcription_job(TranscriptionJobName=job_name)
-    if status['TranscriptionJob']['TranscriptionJobStatus'] in ['COMPLETED', 'FAILED']:
+    status_response = transcribe_client.get_transcription_job(TranscriptionJobName=job_name)
+    job_status = status_response['TranscriptionJob']['TranscriptionJobStatus'
+                                                     ]
+    if job_status in ['COMPLETED', 'FAILED']:
         break
-    time.sleep(2)
-    print(f"Generando transcripción, por favor espere.")
     
+    if time.time() - start_time > timeout:
+        logging.error("Tiempo de espera excedido para la transcripción.")
+        
+        # Salir del programa con un código de error
+        sys.exit(1)
 
-# Mostrar status final de la transcripción. Dado que el bucle anterior sólo se terminaba con COMPLETED o FAILED, 
-# el status al mostrar en pantalla va a ser alguno de esos dos.
-print(f"\nEl estado de la transcripción es: {status['TranscriptionJob']['TranscriptionJobStatus']}")
+    logging.info("Generando transcripción, por favor espere...")
+    time.sleep(2)
 
+# Mostrar estado final de la transcripción
+print(f"\nEl estado de la transcripción es: {job_status}")
+    
+# Verificar el estado de la transcripción antes de continuar
+if job_status == 'UNKNOWN':
+    logging.error("No se pudo obtener el estado del trabajo de transcripción.")
+    
+    # Salir del programa con un código de error
+    sys.exit(2)
 
 # ===============================================
 # Sección para formatear la transcripción y mejorar el formato.
 
-if status['TranscriptionJob']['TranscriptionJobStatus'] == 'COMPLETED':
+if job_status == 'COMPLETED':
     
     # Load the transcript from S3.
     transcript_key = f"{job_name}.json"
@@ -207,9 +225,9 @@ if status['TranscriptionJob']['TranscriptionJobStatus'] == 'COMPLETED':
         output_text += f"{content} "
         
     # Guardar el resultado de la transcripción y formateo en un archivo de texto localmente (no en S3)
-        with open(f'{job_name}.txt', 'w', encoding='utf-8') as f:
-            f.write(output_text)
-            print(f"\nSe ha creado con éxito el archivo: '{job_name}.txt' en la carpeta local.")
+    with open(f'{job_name}.txt', 'w', encoding='utf-8') as f:
+        f.write(output_text)
+        print(f"\nSe ha creado con éxito el archivo: '{job_name}.txt' en la carpeta local.")
 
 
 # ===============================================
@@ -270,7 +288,9 @@ kwargs = {
     )
 }
 
+print("\nGenerando resumen...")
+
 response = bedrock_runtime.invoke_model(**kwargs)
 response_body = json.loads(response.get('body').read())
 generation = response_body['results'][0]['outputText']
-print(generation)
+print(f"El resumen de la transcripción es:\n{generation}")
